@@ -1,13 +1,18 @@
 export default async function handler(request) {
   const url = new URL(request.url);
-  const searchParams = url.searchParams;
+  const key = url.searchParams.get("key") || "";
+  const kwd = url.searchParams.get("kwd") || "";
+  const pageSize = url.searchParams.get("pageSize") || "10";
+  const pageNum = url.searchParams.get("pageNum") || "1";
 
   const apiUrl =
-    "https://www.data4library.kr/api/srchBooks" +
-    "?authKey=" + searchParams.get("authKey") +
-    "&title=" + encodeURIComponent(searchParams.get("title") || "") +
-    "&format=json" +
-    "&pageSize=" + (searchParams.get("pageSize") || "10");
+    "https://www.nl.go.kr/NL/search/openApi/search.do" +
+    "?key=" + key +
+    "&apiType=xml" +
+    "&srchTarget=total" +
+    "&kwd=" + encodeURIComponent(kwd) +
+    "&pageSize=" + pageSize +
+    "&pageNum=" + pageNum;
 
   try {
     const response = await fetch(apiUrl);
@@ -16,18 +21,15 @@ export default async function handler(request) {
     return new Response(data, {
       status: 200,
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/xml; charset=utf-8",
         "Access-Control-Allow-Origin": "*",
       },
     });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ response: { error: "API 서버 연결 실패" } }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return new Response("<error>API 서버 연결 실패</error>", {
+      status: 500,
+      headers: { "Content-Type": "application/xml" },
+    });
   }
 }
 

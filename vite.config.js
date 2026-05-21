@@ -6,8 +6,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://www.data4library.kr',
+        target: 'https://www.nl.go.kr',
         changeOrigin: true,
+        rewrite: function(path) {
+          return path.replace(/^\/api/, '/NL/search/openApi');
+        }
       }
     }
   }

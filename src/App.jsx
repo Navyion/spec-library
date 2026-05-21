@@ -1,51 +1,68 @@
 import { useState, useEffect, useRef } from "react";
 
-const AUTH_KEY = "a3dd2a98445cf098d6ed8431cda01e18f734368f1509c3f06fe4190330c576c5";
+var AUTH_KEY = "a3dd2a98445cf098d6ed8431cda01e18f734368f1509c3f06fe4190330c576c5";
 
-async function fetchBooks(query) {
-  const url =
-    "/api/srchBooks" +
-    "?authKey=" + AUTH_KEY +
-    "&title=" + encodeURIComponent(query) +
-    "&format=json" +
-    "&pageSize=10";
+function parseXML(xmlText) {
+  var parser = new DOMParser();
+  var doc = parser.parseFromString(xmlText, "text/xml");
 
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("API 오류: " + response.status);
+  var totalStr = doc.querySelector("total");
+  var total = totalStr ? parseInt(totalStr.textContent, 10) : 0;
 
-  const data = await response.json();
-  if (data?.response?.error) throw new Error(data.response.error);
+  var items = doc.querySelectorAll("result > item");
+  var books = [];
 
-  const result = data?.response;
-  const total = parseInt(result?.numFound || "0", 10);
-  const docs = result?.docs || [];
-
-  var books = docs.map(function(d) {
-    return {
-      title: d.titleInfo || "제목 없음",
-      author: d.authorInfo || "",
-      publisher: d.pubInfo || "",
-      pubYear: d.pubYearInfo || "",
-      isbn13: d.isbn13 || "",
-      typeName: d.typeName || "단행본",
-      typeCode: d.typeCode || "",
-      bookImageURL: d.bookImageURL || "",
+  items.forEach(function(item) {
+    var get = function(tag) {
+      var el = item.querySelector(tag);
+      return el ? el.textContent.trim() : "";
     };
+    books.push({
+      title: get("title_info") || get("title") || "제목 없음",
+      author: get("author_info") || get("author") || "",
+      publisher: get("pub_info") || get("publisher") || "",
+      pubYear: get("pub_year_info") || get("pub_year") || "",
+      callNo: get("call_no") || "",
+      controlNo: get("control_no") || "",
+      typeCode: get("type_code") || "",
+      typeName: get("type_name") || "단행본",
+      imageUrl: get("image_url") || "",
+    });
   });
 
   return { total: total, books: books };
 }
 
+async function fetchBooks(query, pageNum) {
+  var url =
+    "/api/search.do" +
+    "?key=" + AUTH_KEY +
+    "&apiType=xml" +
+    "&srchTarget=total" +
+    "&kwd=" + encodeURIComponent(query) +
+    "&pageSize=10" +
+    "&pageNum=" + (pageNum || 1);
+
+  var response = await fetch(url);
+  if (!response.ok) throw new Error("API 오류: " + response.status);
+
+  var xmlText = await response.text();
+
+  if (xmlText.indexOf("인증") > -1 && xmlText.indexOf("오류") > -1) {
+    throw new Error("인증키 오류 — 관리자 승인을 확인해주세요.");
+  }
+
+  return parseXML(xmlText);
+}
+
 function BookCard({ book, index }) {
-  const [imgError, setImgError] = useState(false);
-  var typeColors = { AA: "#c8a96e", BB: "#7eb5a6", CC: "#a67ec8" };
-  var accent = typeColors[book.typeCode] || "#c8a96e";
+  var [imgError, setImgError] = useState(false);
 
   return (
-    <div className="book-card" style={{ animationDelay: index * 60 + "ms", "--accent": accent }}>
+    <div className="book-card" style={{ animationDelay: index * 60 + "ms" }}>
       <div className="book-cover">
-        {book.bookImageURL && !imgError ? (
-          <img src={book.bookImageURL} alt={book.title} onError={function() { setImgError(true); }} />
+        {book.imageUrl && !imgError ? (
+          <img src={book.imageUrl} alt={book.title} onError={function() { setImgError(true); }} />
         ) : (
           <div className="cover-placeholder">
             <span className="cover-icon">冊</span>
@@ -60,7 +77,7 @@ function BookCard({ book, index }) {
           {book.publisher && <span>{book.publisher}</span>}
           {book.pubYear && <span>{book.pubYear}</span>}
         </div>
-        {book.isbn13 && <p className="book-isbn">ISBN {book.isbn13}</p>}
+        {book.callNo && <p className="book-isbn">{book.callNo}</p>}
       </div>
     </div>
   );
@@ -85,7 +102,7 @@ export default function LibrarySearch() {
     setBooks([]);
     setSearched(true);
     try {
-      var result = await fetchBooks(trimmed);
+      var result = await fetchBooks(trimmed, 1);
       setBooks(result.books);
       setTotal(result.total);
     } catch (err) {
@@ -148,7 +165,7 @@ export default function LibrarySearch() {
         .cover-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }\
         .cover-icon { font-size: 24px; color: rgba(200,169,110,0.4); font-family: serif; }\
         .book-info { flex: 1; min-width: 0; }\
-        .book-type { display: inline-block; font-size: 10px; letter-spacing: 1px; color: var(--accent); border: 1px solid var(--accent); padding: 2px 7px; border-radius: 2px; margin-bottom: 8px; opacity: 0.8; }\
+        .book-type { display: inline-block; font-size: 10px; letter-spacing: 1px; color: #c8a96e; border: 1px solid #c8a96e; padding: 2px 7px; border-radius: 2px; margin-bottom: 8px; opacity: 0.8; }\
         .book-title { font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: 600; color: #e8dfc8; line-height: 1.4; margin-bottom: 5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }\
         .book-author { font-size: 12px; color: #8a7f6a; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\
         .book-meta { display: flex; gap: 8px; font-size: 11px; color: #5a5245; }\
@@ -164,8 +181,8 @@ export default function LibrarySearch() {
       <div className="app">
         <header className="header">
           <p className="header-label">National Library of Korea · Open API</p>
-          <h1 className="header-title">공공 도서관<br /><em>장서 검색</em></h1>
-          <p className="header-sub">국립중앙도서관 보유 자료를 검색합니다</p>
+          <h1 className="header-title">국립중앙도서관<br /><em>소장자료 검색</em></h1>
+          <p className="header-sub">국립중앙도서관 소장 자료를 검색합니다</p>
         </header>
 
         <section className="search-section">
@@ -174,7 +191,7 @@ export default function LibrarySearch() {
               ref={inputRef}
               className="search-input"
               type="text"
-              placeholder="책 제목을 입력하세요 (예: 채식주의자, 82년생 김지영)"
+              placeholder="검색어를 입력하세요 (예: 채식주의자, 토지, 인공지능)"
               value={query}
               onChange={function(e) { setQuery(e.target.value); }}
               onKeyDown={handleKeyDown}
@@ -189,7 +206,7 @@ export default function LibrarySearch() {
         {loading && (
           <div className="loading-wrap">
             <div className="loading-spinner" />
-            <p className="loading-text">도서관 서버에서 자료를 불러오는 중…</p>
+            <p className="loading-text">국립중앙도서관에서 자료를 불러오는 중…</p>
           </div>
         )}
 
@@ -215,7 +232,7 @@ export default function LibrarySearch() {
             </div>
             <div className="books-grid">
               {books.map(function(book, i) {
-                return <BookCard key={book.isbn13 || i} book={book} index={i} />;
+                return <BookCard key={book.controlNo || i} book={book} index={i} />;
               })}
             </div>
           </>
@@ -224,7 +241,7 @@ export default function LibrarySearch() {
         {!searched && !loading && (
           <div className="hero">
             <div className="hero-deco">書</div>
-            <p className="hero-text">국립중앙도서관이 소장한 수백만 권의 자료를<br />제목으로 검색해보세요.</p>
+            <p className="hero-text">국립중앙도서관이 소장한 수백만 권의 자료를<br />키워드로 검색해보세요.</p>
           </div>
         )}
       </div>
